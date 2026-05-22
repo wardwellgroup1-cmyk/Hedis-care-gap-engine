@@ -101,6 +101,7 @@ function VisitCard({ visit, index }: { visit: AnalysisResult; index: number }) {
 export function FullDashboard({ analysis, visits, onNewVisit, onCollapse }: Props) {
   const [copied, setCopied] = useState(false);
   const [showNote, setShowNote] = useState(false);
+  const [showGaps, setShowGaps] = useState(false);
 
   const note = analysis ? generateNote(analysis.transcript, analysis) : null;
 
@@ -191,6 +192,20 @@ export function FullDashboard({ analysis, visits, onNewVisit, onCollapse }: Prop
             </button>
           )}
           <button
+            onClick={() => setShowGaps((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              showGaps
+                ? 'bg-slate-600 text-white hover:bg-slate-500'
+                : 'bg-emerald-900/60 text-emerald-300 border border-emerald-700 hover:bg-emerald-800/60'
+            }`}
+          >
+            {showGaps ? (
+              <><XCircle className="w-3.5 h-3.5" /> Hide Gaps</>
+            ) : (
+              <><CheckCircle2 className="w-3.5 h-3.5" /> See All Gaps</>
+            )}
+          </button>
+          <button
             onClick={exportJSON}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors"
           >
@@ -212,17 +227,47 @@ export function FullDashboard({ analysis, visits, onNewVisit, onCollapse }: Prop
         </div>
       </div>
 
-      {/* 5-Column Grid + optional Note Panel */}
+      {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
-      {/* Note slide-in panel */}
-      {showNote && note && (
-        <div className="w-96 shrink-0 border-r border-slate-700 bg-slate-950 flex flex-col overflow-hidden animate-slide-up">
-          <NotePanel note={note} />
-        </div>
-      )}
 
-      {/* 5-Column Grid */}
-      <div className="flex-1 grid grid-cols-5 gap-0 overflow-hidden">
+        {/* Physician Note panel (slide in from left) */}
+        {showNote && note && (
+          <div className="w-96 shrink-0 border-r border-slate-700 bg-slate-950 flex flex-col overflow-hidden animate-slide-up">
+            <NotePanel note={note} />
+          </div>
+        )}
+
+        {/* When gaps are hidden: show transcript full-width */}
+        {!showGaps && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-800 shrink-0 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-blue-400" />
+              <span className="text-sm font-semibold text-white">Transcript</span>
+              {analysis && (
+                <div className="ml-auto flex items-center gap-4">
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />{analysis.metrics.closed} gaps closed
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-red-400 font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />{analysis.metrics.missed} gaps missed
+                  </span>
+                  <span className="text-xs text-slate-500">Click <strong className="text-emerald-400">See All Gaps</strong> to view details</span>
+                </div>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {analysis ? (
+                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{analysis.transcript}</p>
+              ) : (
+                <p className="text-sm text-slate-600 italic">No transcript yet. Record dictation first.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 5-Column Gap Grid (shown only when showGaps is true) */}
+        {showGaps && (
+        <div className="flex-1 grid grid-cols-5 gap-0 overflow-hidden">
         {/* Col 1: Transcript */}
         <div className="border-r border-slate-800 flex flex-col overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-800 shrink-0">
@@ -352,8 +397,10 @@ export function FullDashboard({ analysis, visits, onNewVisit, onCollapse }: Prop
             <Heatmap stats={domainStats} />
           </div>
         </div>
-      </div>
-      </div>
+        </div>
+        )} {/* end showGaps */}
+
+      </div> {/* end main content */}
     </div>
   );
 }
