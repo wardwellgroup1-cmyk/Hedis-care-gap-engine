@@ -1,11 +1,13 @@
 import { useState, useCallback } from 'react';
 import {
-  Minimize2, Plus, Trash2, Copy, CheckCircle2, XCircle,
-  Lightbulb, History, BarChart3, User, FileText, ChevronDown, ChevronUp,
+  Minimize2, Plus, Copy, CheckCircle2, XCircle,
+  Lightbulb, History, BarChart3, User, FileText, ChevronDown, ChevronUp, ClipboardList, X,
 } from 'lucide-react';
 import { AnalysisResult, GapResult, DomainStats } from '../types';
 import { Heatmap } from './Heatmap';
 import { computeDomainStats } from '../engine/analyzer';
+import { generateNote } from '../engine/noteGenerator';
+import { NotePanel } from './NotePanel';
 
 interface Props {
   analysis: AnalysisResult | null;
@@ -98,6 +100,9 @@ function VisitCard({ visit, index }: { visit: AnalysisResult; index: number }) {
 
 export function FullDashboard({ analysis, visits, onNewVisit, onCollapse }: Props) {
   const [copied, setCopied] = useState(false);
+  const [showNote, setShowNote] = useState(false);
+
+  const note = analysis ? generateNote(analysis.transcript, analysis) : null;
 
   const allVisits = analysis ? [...visits, analysis] : visits;
   const domainStats: DomainStats[] = computeDomainStats(allVisits);
@@ -172,6 +177,19 @@ export function FullDashboard({ analysis, visits, onNewVisit, onCollapse }: Prop
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          {analysis && (
+            <button
+              onClick={() => setShowNote((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                showNote
+                  ? 'bg-blue-600 text-white hover:bg-blue-500'
+                  : 'bg-blue-900/60 text-blue-300 border border-blue-700 hover:bg-blue-800/60'
+              }`}
+            >
+              <ClipboardList className="w-3.5 h-3.5" />
+              {showNote ? 'Hide Note' : 'Generate Note'}
+            </button>
+          )}
           <button
             onClick={exportJSON}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors"
@@ -193,6 +211,15 @@ export function FullDashboard({ analysis, visits, onNewVisit, onCollapse }: Prop
           </button>
         </div>
       </div>
+
+      {/* 5-Column Grid + optional Note Panel */}
+      <div className="flex-1 flex overflow-hidden">
+      {/* Note slide-in panel */}
+      {showNote && note && (
+        <div className="w-96 shrink-0 border-r border-slate-700 bg-slate-950 flex flex-col overflow-hidden animate-slide-up">
+          <NotePanel note={note} />
+        </div>
+      )}
 
       {/* 5-Column Grid */}
       <div className="flex-1 grid grid-cols-5 gap-0 overflow-hidden">
@@ -325,6 +352,7 @@ export function FullDashboard({ analysis, visits, onNewVisit, onCollapse }: Prop
             <Heatmap stats={domainStats} />
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
