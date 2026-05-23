@@ -91,7 +91,27 @@ function ProblemCard({ problem, onChange }: {
       {/* Expanded detail */}
       {open && (
         <div className="px-3 pb-3 pt-1 border-t border-slate-800 space-y-2">
-          <p className="text-xs text-slate-400">{problem.selectedDescription}</p>
+          <p className="text-xs text-slate-400 mb-2">{problem.selectedDescription}</p>
+
+          {/* TOAD Framework */}
+          <div className="bg-slate-800/60 border border-slate-700 rounded-lg overflow-hidden">
+            <div className="px-3 py-1.5 bg-slate-800 border-b border-slate-700">
+              <span className="text-xs font-bold text-slate-400 tracking-widest uppercase">TOAD</span>
+            </div>
+            <div className="grid grid-cols-2 gap-0">
+              {[
+                { label: 'T · Type', value: problem.toad.type },
+                { label: 'O · Onset', value: problem.toad.onset },
+                { label: 'A · Anatomy', value: problem.toad.anatomy },
+                { label: 'D · Detail', value: problem.toad.detail },
+              ].map(({ label, value }) => (
+                <div key={label} className="px-3 py-2 border-b border-r border-slate-700/50 last:border-b-0">
+                  <p className="text-xs text-slate-500 font-semibold mb-0.5">{label}</p>
+                  <p className="text-xs text-slate-200 leading-relaxed">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* Alternative code picker */}
           {problem.suggestedCodes.length > 1 && (

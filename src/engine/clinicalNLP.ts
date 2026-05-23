@@ -1,5 +1,123 @@
-import { ClinicalProblem, ICD10Suggestion } from '../types';
+import { ClinicalProblem, ICD10Suggestion, TOAD } from '../types';
 import { CODE_DATABASE, CodeEntry } from './codingData';
+
+// ── TOAD Builder ──────────────────────────────────────────────────────────────
+
+// Anatomy defaults by condition ID
+const ANATOMY_MAP: Record<string, string> = {
+  dm2_hyperosmolar: 'Endocrine / Pancreas', dm2_dka: 'Endocrine / Pancreas',
+  dm2_neuropathy: 'Endocrine / Peripheral Nervous System', dm2_ckd: 'Endocrine + Renal',
+  dm2_eye: 'Endocrine / Retina', dm2: 'Endocrine / Pancreas', dm1: 'Endocrine / Pancreas',
+  chf_systolic: 'Cardiovascular / Left Ventricle', chf_diastolic: 'Cardiovascular / Left Ventricle',
+  chf: 'Cardiovascular / Cardiac', acute_mi: 'Cardiovascular / Coronary Artery',
+  cad: 'Cardiovascular / Coronary Artery', afib: 'Cardiovascular / Cardiac Rhythm',
+  aflutter: 'Cardiovascular / Cardiac Rhythm', htn: 'Cardiovascular / Systemic Vasculature',
+  pvd: 'Vascular / Peripheral Arteries', dvt: 'Vascular / Deep Veins',
+  pe: 'Pulmonary / Vasculature',
+  ischemic_stroke: 'Cerebrovascular / Brain', hemorrhagic_stroke: 'Cerebrovascular / Brain',
+  tia: 'Cerebrovascular / Brain', hemiplegia: 'Neurological / Motor Cortex',
+  parkinsons: 'Neurological / Basal Ganglia', alzheimers: 'Neurological / Cortex',
+  ms: 'Neurological / CNS White Matter', epilepsy: 'Neurological / Cortex', als: 'Neurological / Motor Neurons',
+  copd_exacerbation: 'Respiratory / Lungs', copd: 'Respiratory / Lungs',
+  asthma: 'Respiratory / Airways', pulm_fibrosis: 'Respiratory / Interstitium',
+  cystic_fibrosis: 'Respiratory / Lungs + Exocrine', aspiration_pna: 'Respiratory / Lungs',
+  esrd_dialysis: 'Renal / Kidney (ESRD)', ckd5: 'Renal / Kidney', ckd4: 'Renal / Kidney',
+  ckd3: 'Renal / Kidney', ckd_unspec: 'Renal / Kidney', aki: 'Renal / Kidney (Acute)',
+  schizophrenia: 'Psychiatric / CNS', bipolar: 'Psychiatric / CNS', mdd: 'Psychiatric / CNS',
+  anxiety: 'Psychiatric / CNS', ptsd: 'Psychiatric / CNS', drug_dependence: 'Psychiatric / CNS',
+  esld: 'Hepatic / Liver', cirrhosis: 'Hepatic / Liver', chronic_hep: 'Hepatic / Liver',
+  metastatic_cancer: 'Oncology / Systemic', lung_cancer: 'Oncology / Lungs',
+  colorectal_cancer: 'Oncology / Colon & Rectum', breast_cancer: 'Oncology / Breast',
+  prostate_cancer: 'Oncology / Prostate', lymphoma: 'Oncology / Lymphatic System',
+  ra: 'Rheumatology / Joints', osteoporosis: 'Musculoskeletal / Bone',
+  morbid_obesity: 'Metabolic / Body Composition', obesity: 'Metabolic / Body Composition',
+  hypothyroid: 'Endocrine / Thyroid', hyperthyroid: 'Endocrine / Thyroid',
+  malnutrition: 'Nutritional / Systemic', sickle_cell: 'Hematology / RBC',
+  anemia: 'Hematology / RBC', ibd: 'Gastrointestinal / Colon', gerd: 'Gastrointestinal / Esophagus',
+  hiv: 'Infectious Disease / Immune', pneumonia: 'Respiratory / Lungs',
+  uti: 'Urinary / Bladder & Urethra', otitis_media: 'ENT / Middle Ear',
+  sinusitis: 'ENT / Paranasal Sinuses', back_pain: 'Musculoskeletal / Lumbar Spine',
+  hyperlipidemia: 'Metabolic / Lipid',
+};
+
+// Onset defaults by condition ID
+const ONSET_MAP: Record<string, string> = {
+  dm2_hyperosmolar: 'acute-on-chronic', dm2_dka: 'acute-on-chronic',
+  dm2_neuropathy: 'chronic', dm2_ckd: 'chronic', dm2_eye: 'chronic',
+  dm2: 'chronic', dm1: 'chronic',
+  chf_systolic: 'chronic', chf_diastolic: 'chronic', chf: 'chronic',
+  acute_mi: 'acute', cad: 'chronic', afib: 'chronic', aflutter: 'chronic',
+  htn: 'chronic', pvd: 'chronic', dvt: 'acute', pe: 'acute',
+  ischemic_stroke: 'acute', hemorrhagic_stroke: 'acute', tia: 'acute',
+  hemiplegia: 'chronic', parkinsons: 'chronic', alzheimers: 'chronic',
+  ms: 'chronic', epilepsy: 'chronic', als: 'chronic',
+  copd_exacerbation: 'acute-on-chronic', copd: 'chronic',
+  asthma: 'chronic', pulm_fibrosis: 'chronic', cystic_fibrosis: 'chronic',
+  aspiration_pna: 'acute', esrd_dialysis: 'chronic', ckd5: 'chronic',
+  ckd4: 'chronic', ckd3: 'chronic', ckd_unspec: 'chronic', aki: 'acute',
+  schizophrenia: 'chronic', bipolar: 'chronic', mdd: 'chronic',
+  anxiety: 'chronic', ptsd: 'chronic', drug_dependence: 'chronic',
+  esld: 'chronic', cirrhosis: 'chronic', chronic_hep: 'chronic',
+  metastatic_cancer: 'chronic', lung_cancer: 'chronic', colorectal_cancer: 'chronic',
+  breast_cancer: 'chronic', prostate_cancer: 'chronic', lymphoma: 'chronic',
+  ra: 'chronic', osteoporosis: 'chronic', morbid_obesity: 'chronic',
+  obesity: 'chronic', hypothyroid: 'chronic', hyperthyroid: 'chronic',
+  malnutrition: 'chronic', sickle_cell: 'chronic', anemia: 'chronic',
+  ibd: 'chronic', gerd: 'chronic', hiv: 'chronic',
+  pneumonia: 'acute', uti: 'acute', otitis_media: 'acute',
+  sinusitis: 'acute', back_pain: 'acute', hyperlipidemia: 'chronic',
+};
+
+function buildTOAD(
+  entry: CodeEntry,
+  laterality: string | undefined,
+  acuity: string | undefined,
+  severity: string | undefined,
+  negated: boolean,
+  uncertain: boolean
+): TOAD {
+  // TYPE: refined label incorporating attributes
+  let type = entry.label;
+  if (laterality) type = `${type}, ${laterality} side`;
+  if (acuity === 'acute' && !type.toLowerCase().includes('acute')) type = `Acute ${type}`;
+  if (acuity === 'chronic' && !type.toLowerCase().includes('chronic')) type = `Chronic ${type}`;
+  if (uncertain) type = `Possible ${type}`;
+
+  // ONSET: use extracted acuity or condition default
+  let onset = acuity ?? ONSET_MAP[entry.id] ?? 'unspecified';
+  if (negated) onset = 'n/a (negated)';
+
+  // ANATOMY: base from map + laterality refinement
+  let anatomy = ANATOMY_MAP[entry.id] ?? 'Unspecified';
+  if (laterality && laterality !== 'bilateral') {
+    anatomy = anatomy.replace(/Middle Ear$/, `${laterality.charAt(0).toUpperCase() + laterality.slice(1)} Middle Ear`);
+    anatomy = anatomy.replace(/Breast$/, `${laterality.charAt(0).toUpperCase() + laterality.slice(1)} Breast`);
+    anatomy = anatomy.replace(/Lungs$/, `${laterality.charAt(0).toUpperCase() + laterality.slice(1)} Lung`);
+  }
+  if (laterality === 'bilateral') anatomy += ' (bilateral)';
+
+  // DETAIL: clinical specifics
+  const details: string[] = [];
+  if (severity) details.push(`severity: ${severity}`);
+  if (entry.hcc) details.push(`HCC ${entry.hcc.number}`);
+  if (negated) details.push('ruled out / negated');
+  if (uncertain) details.push('uncertain — requires confirmation');
+
+  // Condition-specific details
+  if (entry.id === 'dm2') details.push('without documented complications');
+  if (entry.id === 'dm2_neuropathy') details.push('peripheral sensory involvement');
+  if (entry.id === 'dm2_ckd') details.push('diabetic nephropathy');
+  if (entry.id === 'chf') details.push('ejection fraction unspecified');
+  if (entry.id === 'chf_systolic') details.push('reduced ejection fraction (HFrEF)');
+  if (entry.id === 'chf_diastolic') details.push('preserved ejection fraction (HFpEF)');
+  if (entry.id === 'copd_exacerbation') details.push('acute exacerbation requiring treatment');
+  if (entry.id === 'esrd_dialysis') details.push('on dialysis');
+  if (entry.id === 'otitis_media') details.push(acuity === 'acute' ? 'no spontaneous rupture documented' : 'chronic/recurrent involvement');
+
+  const detail = details.length > 0 ? details.join('; ') : 'no additional qualifiers documented';
+
+  return { type, onset, anatomy, detail };
+}
 
 // ── Negation / Uncertainty context ────────────────────────────────────────────
 
@@ -130,12 +248,15 @@ export function extractProblems(transcript: string): ClinicalProblem[] {
           }
         : undefined;
 
+      const toad = buildTOAD(entry, laterality, acuity, severity, negated, uncertain);
+
       found.push({
         id: entry.id,
         rawText: match[0],
         label: entry.label,
         negated,
         uncertain,
+        toad,
         attributes: {
           ...(laterality ? { laterality } : {}),
           ...(acuity ? { acuity } : {}),
@@ -160,18 +281,19 @@ export function extractProblems(transcript: string): ClinicalProblem[] {
 export function toStructuredJSON(problems: ClinicalProblem[]) {
   return {
     problems: problems.map((p) => ({
-      text: p.label,
+      problem: p.label,
       icd10: p.selectedCode,
-      description: p.selectedDescription,
+      icd10_description: p.selectedDescription,
       negated: p.negated,
       uncertain: p.uncertain,
-      attributes: {
-        ...(p.attributes.laterality ? { laterality: p.attributes.laterality } : {}),
-        ...(p.attributes.acuity ? { acute: p.attributes.acuity === 'acute', chronic: p.attributes.acuity === 'chronic' } : {}),
-        ...(p.attributes.severity ? { severity: p.attributes.severity } : {}),
+      TOAD: {
+        type: p.toad.type,
+        onset: p.toad.onset,
+        anatomy: p.toad.anatomy,
+        detail: p.toad.detail,
       },
-      hcc: p.hcc ? { number: p.hcc.number, description: p.hcc.description } : null,
-      raf: p.hcc && !p.hcc.suppressedByHierarchy ? p.hcc.raf : 0,
+      hcc: p.hcc ? { number: p.hcc.number, description: p.hcc.description, suppressed: p.hcc.suppressedByHierarchy } : null,
+      raf_contribution: p.hcc && !p.hcc.suppressedByHierarchy ? p.hcc.raf : 0,
     })),
   };
 }

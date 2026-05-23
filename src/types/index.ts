@@ -13,6 +13,15 @@ export interface Demographics {
 }
 
 // ── ICD-10 / HCC / RAF ────────────────────────────────────────────────────────
+// ── TOAD Framework ────────────────────────────────────────────────────────────
+// Type · Onset · Anatomy · Detail
+export interface TOAD {
+  type: string;      // specific clinical classification
+  onset: string;     // acute | chronic | subacute | recurrent | new | established
+  anatomy: string;   // organ system or anatomical location (+ laterality)
+  detail: string;    // severity, stage, complications, modifiers
+}
+
 export interface ICD10Suggestion {
   code: string;
   description: string;
@@ -37,6 +46,7 @@ export interface ClinicalProblem {
     acuity?: 'acute' | 'chronic';
     severity?: 'mild' | 'moderate' | 'severe';
   };
+  toad: TOAD;
   suggestedCodes: ICD10Suggestion[];
   selectedCode: string;       // code the provider accepted (default = top suggestion)
   selectedDescription: string;

@@ -2,12 +2,20 @@
 // RAF values: CMS-HCC v28, Community Non-Dual Aged (most common MA population)
 // Hierarchy groups: within a group, only the highest-ranked HCC counts
 
+export interface TOADDefaults {
+  type: string;
+  onset: string;
+  anatomy: string;
+  detail: string;
+}
+
 export interface CodeEntry {
   id: string;
   label: string;
   patterns: RegExp[];
   icd10Code: string;
   icd10Desc: string;
+  toad?: TOADDefaults;  // built dynamically in clinicalNLP if not set
   hcc?: {
     number: number;
     description: string;
