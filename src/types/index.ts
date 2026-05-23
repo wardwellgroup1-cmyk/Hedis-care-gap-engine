@@ -35,6 +35,30 @@ export interface HCCAssignment {
   suppressedByHierarchy: boolean;
 }
 
+// ── MEAT Framework ───────────────────────────────────────────────────────────
+// Monitoring · Evaluation · Assessment · Treatment
+// RAF validity: Assessment + at least one of M/E/T
+export interface MEATStatus {
+  monitoring: boolean;
+  evaluation: boolean;
+  assessment: boolean;
+  treatment: boolean;
+  isRAFValid: boolean;
+  missingElements: string[];
+  suggestions: string[];
+}
+
+// ── Chronic Condition Recall ──────────────────────────────────────────────────
+export interface RecallCondition {
+  id: string;
+  label: string;
+  icd10Code: string;
+  lastSeen: string;      // YYYY-MM-DD
+  encounters: number;
+  hccNumber?: number;
+  hccRAF?: number;
+}
+
 export interface ClinicalProblem {
   id: string;
   rawText: string;            // text as extracted from transcript
@@ -51,6 +75,8 @@ export interface ClinicalProblem {
   selectedCode: string;       // code the provider accepted (default = top suggestion)
   selectedDescription: string;
   hcc?: HCCAssignment;
+  meat?: MEATStatus;          // MEAT documentation status
+  isRecalled?: boolean;       // true if injected from chronic condition recall
 }
 
 export interface RAFResult {

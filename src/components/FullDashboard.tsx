@@ -3,7 +3,7 @@ import {
   Minimize2, Plus, Copy, CheckCircle2, User, BarChart3,
   ClipboardList, Activity, ShieldCheck,
 } from 'lucide-react';
-import { ClinicalProblem, RAFResult, HEDISResult, Demographics, DashTab } from '../types';
+import { ClinicalProblem, RAFResult, HEDISResult, Demographics, DashTab, RecallCondition } from '../types';
 import { CodingPanel } from './CodingPanel';
 import { NotePanel } from './NotePanel';
 import { generateNote } from '../engine/noteGenerator';
@@ -95,7 +95,10 @@ interface Props {
   raf: RAFResult | null;
   hedis: HEDISResult | null;
   visits: AnalysisResult[];
+  specChanges?: string[];
+  recallAlerts?: RecallCondition[];
   onCodeChange: (id: string, code: string, desc: string) => void;
+  onAddRecalled?: (condition: RecallCondition) => void;
   onNewVisit: () => void;
   onCollapse: () => void;
 }
@@ -107,7 +110,10 @@ export function FullDashboard({
   raf,
   hedis,
   visits,
+  specChanges = [],
+  recallAlerts = [],
   onCodeChange,
+  onAddRecalled,
   onNewVisit,
   onCollapse,
 }: Props) {
@@ -229,7 +235,14 @@ export function FullDashboard({
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'coding' && (
-          <CodingPanel problems={problems} raf={raf} onCodeChange={onCodeChange} />
+          <CodingPanel
+            problems={problems}
+            raf={raf}
+            specChanges={specChanges}
+            recallAlerts={recallAlerts}
+            onCodeChange={onCodeChange}
+            onAddRecalled={onAddRecalled}
+          />
         )}
         {activeTab === 'note' && note && (
           <NotePanel note={note} />

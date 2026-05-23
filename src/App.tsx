@@ -2,11 +2,21 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { MiniWidget } from './components/MiniWidget';
 import { FullDashboard } from './components/FullDashboard';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
-import { AppMode, RecordingState, ClinicalProblem, RAFResult, HEDISResult, Demographics } from './types';
+import {
+  AppMode, RecordingState, ClinicalProblem, RAFResult,
+  HEDISResult, Demographics, RecallCondition,
+} from './types';
 import { extractProblems } from './engine/clinicalNLP';
 import { calculateRAF } from './engine/rafEngine';
 import { extractDemographics } from './engine/patterns';
 import { analyzeTranscript } from './engine/analyzer'; // HEDIS
+import { applyComboCodes } from './engine/icdSpecificity';
+import { detectMEAT } from './engine/meatDetector';
+import {
+  getRecallAlerts,
+  updateRecallFromProblems,
+  createProblemFromRecall,
+} from './engine/chronicRecall';
 import { AnalysisResult } from './types';
 
 const STORAGE_KEY = 'hedis_visit_history_v2';
@@ -26,16 +36,20 @@ export default function App() {
   const [hedis, setHedis] = useState<HEDISResult | null>(null);
   const [visits, setVisits] = useState<AnalysisResult[]>(loadVisits);
 
+  // Coding enhancements
+  const [specChanges, setSpecChanges] = useState<string[]>([]);
+  const [recallAlerts, setRecallAlerts] = useState<RecallCondition[]>([]);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { transcript, interimTranscript, isSupported, start, pause, stop, reset } =
     useSpeechRecognition();
 
-  // ── Analysis runner ────────────────────────────────────────────────────────
+  // ── Full analysis pipeline ────────────────────────────────────────────────
   const runAnalysis = useCallback((text: string) => {
     if (text.trim().length < 5) return;
 
-    // Demographics
+    // 1. Demographics
     const demo = extractDemographics(text);
     const demoTyped: Demographics = {
       age: demo.age,
@@ -44,13 +58,30 @@ export default function App() {
     };
     setDemographics(demoTyped);
 
-    // ICD-10 + HCC + RAF
-    const extracted = extractProblems(text);
-    setProblems(extracted);
-    const rafResult = calculateRAF(extracted, demo.age, demo.gender);
+    // 2. ICD-10 extraction
+    let extracted = extractProblems(text);
+
+    // 3. ICD specificity — combo codes, CKD staging, insulin Z79.4
+    const { problems: withCombos, changes } = applyComboCodes(extracted, text);
+    setSpecChanges(changes);
+
+    // 4. MEAT detection for each problem
+    const withMEAT: ClinicalProblem[] = withCombos.map((p) => ({
+      ...p,
+      meat: detectMEAT(p, text),
+    }));
+
+    setProblems(withMEAT);
+
+    // 5. RAF calculation (uses updated codes from combo engine)
+    const rafResult = calculateRAF(withMEAT, demo.age, demo.gender);
     setRaf(rafResult);
 
-    // HEDIS (secondary)
+    // 6. Chronic recall alerts (conditions NOT in today's list)
+    const recalls = getRecallAlerts(withMEAT);
+    setRecallAlerts(recalls);
+
+    // 7. HEDIS (secondary)
     const hedisResult = analyzeTranscript(text);
     setHedis({ gaps: hedisResult.gaps, metrics: hedisResult.metrics });
   }, []);
@@ -63,13 +94,15 @@ export default function App() {
     debounceRef.current = setTimeout(() => runAnalysis(combined), 500);
   }, [transcript, interimTranscript, runAnalysis]);
 
-  // ── Recording controls ─────────────────────────────────────────────────────
+  // ── Recording controls ────────────────────────────────────────────────────
   const handleRecord = useCallback(() => {
     if (recordingState === 'idle') {
       reset();
       setProblems([]);
       setRaf(null);
       setHedis(null);
+      setSpecChanges([]);
+      setRecallAlerts([]);
       setDemographics({ age: null, gender: 'UNKNOWN', confidence: 'LOW' });
       start();
       setRecordingState('recording');
@@ -90,20 +123,44 @@ export default function App() {
     setMode('full');
   }, [stop, transcript, interimTranscript, runAnalysis]);
 
+  // ── Code change (provider selects alternate ICD-10) ───────────────────────
   const handleCodeChange = useCallback((id: string, code: string, desc: string) => {
     setProblems((prev) => {
       const next = prev.map((p) =>
         p.id === id ? { ...p, selectedCode: code, selectedDescription: desc } : p
       );
-      // Recalculate RAF with updated codes
       const rafResult = calculateRAF(next, demographics.age, demographics.gender);
       setRaf(rafResult);
       return next;
     });
   }, [demographics]);
 
+  // ── Add recalled condition to current session ─────────────────────────────
+  const handleAddRecalled = useCallback((condition: RecallCondition) => {
+    const currentText = (transcript + ' ' + interimTranscript).trim();
+    const newProblem = createProblemFromRecall(condition, currentText);
+
+    setProblems((prev) => {
+      // Don't add duplicate
+      if (prev.some((p) => p.id === condition.id)) return prev;
+      const next = [...prev, newProblem];
+      // Recalculate RAF
+      const rafResult = calculateRAF(next, demographics.age, demographics.gender);
+      setRaf(rafResult);
+      // Remove from recall alerts
+      setRecallAlerts((r) => r.filter((a) => a.id !== condition.id));
+      return next;
+    });
+  }, [transcript, interimTranscript, demographics]);
+
+  // ── New visit (saves recall + clears state) ───────────────────────────────
   const handleNewVisit = useCallback(() => {
-    // Save current visit to history
+    // Persist chronic conditions to recall storage
+    if (problems.length > 0) {
+      updateRecallFromProblems(problems);
+    }
+
+    // Save to visit history
     if (transcript && hedis) {
       const result = analyzeTranscript(transcript);
       setVisits((prev) => {
@@ -112,14 +169,17 @@ export default function App() {
         return next;
       });
     }
+
     reset();
     setProblems([]);
     setRaf(null);
     setHedis(null);
+    setSpecChanges([]);
+    setRecallAlerts([]);
     setDemographics({ age: null, gender: 'UNKNOWN', confidence: 'LOW' });
     setRecordingState('idle');
     setMode('mini');
-  }, [transcript, hedis, reset]);
+  }, [transcript, hedis, problems, reset]);
 
   // Mini widget quick stats
   const quickClosed = hedis?.metrics.closed ?? 0;
@@ -150,7 +210,10 @@ export default function App() {
           raf={raf}
           hedis={hedis}
           visits={visits}
+          specChanges={specChanges}
+          recallAlerts={recallAlerts}
           onCodeChange={handleCodeChange}
+          onAddRecalled={handleAddRecalled}
           onNewVisit={handleNewVisit}
           onCollapse={() => setMode('mini')}
         />
